@@ -39,14 +39,16 @@ void connection_pool::init(string url, string User, string PassWord, string DBNa
 
 		if (con == NULL)
 		{
-			LOG_ERROR("MySQL Error");
+			LOG_ERROR("MySQL init Error");
 			exit(1);
 		}
+		MYSQL *handle = con;
 		con = mysql_real_connect(con, url.c_str(), User.c_str(), PassWord.c_str(), DBName.c_str(), Port, NULL, 0);
 
 		if (con == NULL)
 		{
-			LOG_ERROR("MySQL Error");
+			// 失败时打印 mysql_error 详情, 笼统的 "MySQL Error" 无法定位问题
+			LOG_ERROR("MySQL connect Error(%s:%d, user=%s): %s", url.c_str(), Port, User.c_str(), mysql_error(handle));
 			exit(1);
 		}
 		connList.push_back(con);
