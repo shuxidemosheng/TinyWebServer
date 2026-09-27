@@ -22,6 +22,7 @@
 #include <sys/uio.h>
 
 #include <time.h>
+#include <vector>
 #include "../log/log.h"
 
 class util_timer;
@@ -33,18 +34,19 @@ struct client_data
     util_timer *timer;
 };
 
+// 定时器节点(改造1: 数据结构由升序链表换为最小堆,
+// 不再需要 prev/next 指针, 改由 heap_idx 记录自己在堆中的位置)
 class util_timer
 {
 public:
-    util_timer() : prev(NULL), next(NULL) {}
+    util_timer() : expire(0), cb_func(NULL), user_data(NULL), heap_idx(-1) {}
 
 public:
     time_t expire;
-    
+
     void (* cb_func)(client_data *);
     client_data *user_data;
-    util_timer *prev;
-    util_timer *next;
+    int heap_idx;   // 在最小堆中的下标, 由 sort_timer_lst 统一维护
 };
 
 class sort_timer_lst
@@ -59,10 +61,11 @@ public:
     void tick();
 
 private:
-    void add_timer(util_timer *timer, util_timer *lst_head);
+    void sift_up(int i);
+    void sift_down(int i);
+    void swap_node(int i, int j);
 
-    util_timer *head;
-    util_timer *tail;
+    std::vector<util_timer *> heap_;   // 以 expire 为键的最小堆, 堆顶最先到期
 };
 
 class Utils
