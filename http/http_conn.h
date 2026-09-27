@@ -88,7 +88,7 @@ public:
 
 
 private:
-    void init();
+    void init(bool keep_leftover = false);
     HTTP_CODE process_read();
     bool process_write(HTTP_CODE ret);
     HTTP_CODE parse_request_line(char *text);
@@ -120,6 +120,7 @@ private:
     long m_read_idx;
     long m_checked_idx;
     int m_start_line;
+    long m_parsed_end;  // 已完整解析的请求在缓冲区中消费到的位置(pipelining 残留保护用)
     char m_write_buf[WRITE_BUFFER_SIZE];
     int m_write_idx;
     CHECK_STATE m_check_state;

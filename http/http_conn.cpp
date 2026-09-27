@@ -131,9 +131,10 @@ void http_conn::init(int sockfd, const sockaddr_in &addr, char *root, int TRIGMo
     init();
 }
 
-//初始化新接受的连接
-//check_state默认为分析请求行状态
-void http_conn::init()
+//keep_leftover=false: 新连接, 缓冲区全量清空
+//keep_leftover=true : keep-alive 复用连接, 保留缓冲区中下一个请求的残留字节
+//                     (原版无条件 memset 导致 pipelining 的第二个请求被无声丢弃)
+void http_conn::init(bool keep_leftover)
 {
     mysql = NULL;
     bytes_to_send = 0;
@@ -147,14 +148,25 @@ void http_conn::init()
     m_host = 0;
     m_start_line = 0;
     m_checked_idx = 0;
-    m_read_idx = 0;
     m_write_idx = 0;
     cgi = 0;
     m_state = 0;
     timer_flag = 0;
     improv = 0;
 
-    memset(m_read_buf, '\0', READ_BUFFER_SIZE);
+    if (keep_leftover && m_parsed_end < m_read_idx)
+    {
+        // 把已解析请求之后的残留字节搬到缓冲区头部, 随后下标归零接着解析
+        long leftover = m_read_idx - m_parsed_end;
+        memmove(m_read_buf, m_read_buf + m_parsed_end, leftover);
+        m_read_idx = leftover;
+    }
+    else
+    {
+        m_read_idx = 0;
+        memset(m_read_buf, '\0', READ_BUFFER_SIZE);
+    }
+    m_parsed_end = 0;
     memset(m_write_buf, '\0', WRITE_BUFFER_SIZE);
     memset(m_real_file, '\0', FILENAME_LEN);
 }
@@ -366,6 +378,7 @@ http_conn::HTTP_CODE http_conn::process_read()
                 return BAD_REQUEST;
             else if (ret == GET_REQUEST)
             {
+                m_parsed_end = m_checked_idx;   // 无 body: 消费到空行结束(改造2)
                 return do_request();
             }
             break;
@@ -374,7 +387,11 @@ http_conn::HTTP_CODE http_conn::process_read()
         {
             ret = parse_content(text);
             if (ret == GET_REQUEST)
+            {
+                // body 阶段 m_checked_idx 停在 body 起点, 实际消费 = 起点+Content-Length(改造2)
+                m_parsed_end = m_checked_idx + m_content_length;
                 return do_request();
+            }
             line_status = LINE_OPEN;
             break;
         }
@@ -576,7 +593,13 @@ bool http_conn::write()
 
             if (m_linger)
             {
-                init();
+                init(true);   // 保留缓冲区残留(改造2)
+                if (m_read_idx > 0)
+                {
+                    // 缓冲区里还留有完整或半截请求, 立即继续解析并组织响应,
+                    // 不必等下一次网络事件来触发(LT 模式下内核 socket 已空时不会再通知)
+                    process();
+                }
                 return true;
             }
             else
