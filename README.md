@@ -10,6 +10,40 @@ Linux下C++轻量级Web服务器，助力初学者快速实践网络编程，搭
 * 实现**同步/异步日志系统**，记录服务器运行状态
 * 经Webbench压力测试可以实现**上万的并发连接**数据交换
 
+---
+
+## 本 Fork 的修改
+
+在通读源码后完成三项改造与两个 bug 修复，每项遵循"问题 → 假设 → 方案 → 数据"的方法论，基准脚本随仓库可复现。
+
+### Bug 修复
+
+1. **POST 密码解析偏移错误**（[PR #330](https://github.com/qinguoyi/TinyWebServer/pull/330)）
+   `do_request()` 用硬编码 `i + 10` 定位密码值，而 `&passwd=` 实际只有 8 字节，
+   注册 `passwd=123456` 入库变 `3456`。已改为 `strstr` 按 `"passwd="` 字面定位。
+2. **keep-alive pipelining 下残留请求数据被无声清空**（commit `3c58f47`）
+   发完响应后无条件 `init()` 清空 `m_read_buf`，pipeline 的后续请求丢失。
+   现记录消费边界 `m_parsed_end`，复用连接时将残留字节 `memmove` 到缓冲区头部并立即续处理。
+   验证：单连接连发两个 GET，修复前 1/2 响应，修复后 2/2。
+
+### 性能改造
+
+3. **定时器升序链表 → 最小堆**（tag `v1.1-timer-heap`）
+   基准（1 万定时器，`srand(42)` 可复现）：add **7.61µs → 0.03µs**、adjust **6.77µs → 0.03µs**，约 250/225 倍提升。节点以 `heap_idx` 记录堆中位置，adjust/del 无需线性查找。数据见 [timer/bench_result.md](timer/bench_result.md)。
+
+4. **日志系统性能改造**（tag `v1.2-log-perf`）
+   移除宏内每行 `fflush`（原版异步日志因此比同步更慢）、格式化从全局锁内共享缓冲改为
+   栈缓冲、写盘线程以"队列空闲 1 秒"节奏落盘；顺带修复 `block_queue` 超时 `pop`
+   的纳秒换算潜伏 bug。基准（wrk -c100 -t2 -d5s）：**同步日志代价 -44% → -10%**，
+   异步 -59% → -52%。数据见 [test_pressure/log_bench_result.md](test_pressure/log_bench_result.md)。
+
+### 环境
+
+`main.cpp` 的数据库凭据改为环境变量注入（`TWS_DB_USER`/`TWS_DB_PASS`），连接地址改为
+`127.0.0.1`（`localhost` 会被 MySQL 客户端特殊化为 Unix 域套接字，容器化数据库必须走 TCP）。
+
+---
+
 
 写在前面
 ----
