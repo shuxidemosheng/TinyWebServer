@@ -177,7 +177,9 @@ public:
         if (m_size <= 0)
         {
             t.tv_sec = now.tv_sec + ms_timeout / 1000;
-            t.tv_nsec = (ms_timeout % 1000) * 1000;
+            // 改造3修复: 原为 (ms_timeout % 1000) * 1000 —— tv_nsec 单位是纳秒,
+            // 少乘 1000 导致亚秒超时全部提前返回(如 500ms 实际只等 0.5ms)
+            t.tv_nsec = (ms_timeout % 1000) * 1000000L;
             if (!m_cond.timewait(m_mutex.get(), t))
             {
                 m_mutex.unlock();
