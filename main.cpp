@@ -3,8 +3,12 @@
 int main(int argc, char *argv[])
 {
     //需要修改的数据库信息,登录名,密码,库名
-    string user = "root";
-    string passwd = "root";
+    //数据库账号从环境变量读取，避免把密码硬编码进源码（凭据不进代码库是安全底线）
+    //启动示例：TWS_DB_USER=appuser TWS_DB_PASS=xxx ./server -p 8888
+    const char *env_user = getenv("TWS_DB_USER");
+    const char *env_pass = getenv("TWS_DB_PASS");
+    string user = env_user ? env_user : "appuser";
+    string passwd = env_pass ? env_pass : "";
     string databasename = "qgydb";
 
     //命令行解析

@@ -88,7 +88,9 @@ void WebServer::sql_pool()
 {
     //初始化数据库连接池
     m_connPool = connection_pool::GetInstance();
-    m_connPool->init("localhost", m_user, m_passWord, m_databaseName, 3306, m_sql_num, m_close_log);
+    // "localhost" 会被 MySQL 客户端特殊处理为 Unix 域套接字（本机无 mysqld 则必失败），
+    // 容器化 MySQL 只暴露 TCP，因此必须写 127.0.0.1 走 TCP
+    m_connPool->init("127.0.0.1", m_user, m_passWord, m_databaseName, 3306, m_sql_num, m_close_log);
 
     //初始化数据库读取表
     users->initmysql_result(m_connPool);
